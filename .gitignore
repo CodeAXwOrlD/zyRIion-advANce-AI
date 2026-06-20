@@ -1,0 +1,23 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Python Cache & compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Large binary files & voice packages
+voice/piper/piper_linux_x86_64.tar.gz
+voice/piper/en_US-lessac-medium.onnx
+voice/piper/piper
+*.npy
+
+# IDE / System files
+.vscode/
+.idea/
+.DS_Store
