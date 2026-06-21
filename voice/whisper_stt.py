@@ -1,18 +1,16 @@
 import sounddevice as sd
 import numpy as np
-import whisper
+import tempfile
+import soundfile as sf
+from groq import Groq
+import sys
+sys.path.append('/media/indmadmax/drive/zyrion')
+from core.config import GROQ_API_KEY, WHISPER_MODEL
 
 SAMPLE_RATE = 16000
-DURATION = 6
+DURATION = 8
 
-model = None
-
-def load_model():
-    global model
-    if model is None:
-        print("⏳ Loading Whisper model...")
-        model = whisper.load_model("base")
-        print("✅ Whisper ready!")
+client = Groq(api_key=GROQ_API_KEY)
 
 def record_command():
     print("🎤 Listening for command...")
@@ -23,10 +21,15 @@ def record_command():
     return audio.flatten()
 
 def transcribe(audio):
-    load_model()
-    audio_float = audio.astype(np.float32)
-    result = model.transcribe(audio_float, language="en")
-    text = result["text"].strip()
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        sf.write(f.name, audio, SAMPLE_RATE)
+        with open(f.name, "rb") as audio_file:
+            result = client.audio.transcriptions.create(
+                model=WHISPER_MODEL,
+                file=audio_file,
+                language="en"
+            )
+    text = result.text.strip()
     print(f"📝 You said: {text}")
     return text
 
@@ -35,7 +38,5 @@ def listen_and_transcribe():
     return transcribe(audio)
 
 if __name__ == "__main__":
-    load_model()
     text = listen_and_transcribe()
     print(f"Result: {text}")
-EOF

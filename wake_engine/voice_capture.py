@@ -1,8 +1,5 @@
-import threading
 import sys
-import os
-
-sys.path.append(os.path.expanduser("~/Documents/zyrion"))
+sys.path.append('/media/indmadmax/drive/zyrion')
 
 from wake_engine.clap_detection import listen_for_claps
 from wake_engine.speaker_verify import verify_speaker

@@ -2,11 +2,11 @@ import sounddevice as sd
 import numpy as np
 import time
 
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 16000
 THRESHOLD = 0.25
 MIN_CLAP_GAP = 0.1
 MAX_CLAP_GAP = 1.0
-CHUNK = 2048
+CHUNK = 4096
 
 def listen_for_claps(on_double_clap):
     print("👂 ZYRION listening for claps...")
