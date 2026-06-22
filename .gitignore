@@ -23,3 +23,4 @@ voice/piper/piper
 .DS_Store
 .env
 voice/piper/
+wake_engine/security_log.txt

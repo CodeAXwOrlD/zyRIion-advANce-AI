@@ -10,17 +10,21 @@ MAX_CLAP_GAP = 1.0         # max gap between 2 claps to count as "double clap"
 HIGH_FREQ_CUTOFF_HZ = 1500
 HIGH_FREQ_RATIO_MIN = 0.30 # claps are broadband/percussive — require real high-freq energy
 
+# Pre-compute frequency mask once (same for every chunk of the same size)
+_freqs = np.fft.rfftfreq(CHUNK, 1 / SAMPLE_RATE)
+_high_freq_mask = _freqs > HIGH_FREQ_CUTOFF_HZ
+_window = np.hanning(CHUNK)
+
+
 def is_clap_like(chunk):
     """Distinguishes an actual clap (sharp, broadband, high-frequency) from generic
     loud noise like a fan spike, hum, or voice — only runs when volume already crossed
     threshold, so this stays cheap on CPU."""
-    spectrum = np.abs(np.fft.rfft(chunk * np.hanning(len(chunk))))
-    freqs = np.fft.rfftfreq(len(chunk), 1 / SAMPLE_RATE)
-
+    spectrum = np.abs(np.fft.rfft(chunk * _window))
     total_energy = np.sum(spectrum) + 1e-9
-    high_energy = np.sum(spectrum[freqs > HIGH_FREQ_CUTOFF_HZ])
-
+    high_energy = np.sum(spectrum[_high_freq_mask])
     return (high_energy / total_energy) > HIGH_FREQ_RATIO_MIN
+
 
 def _calibrate_noise():
     """One-time ambient noise calibration at startup."""
@@ -35,11 +39,12 @@ def _calibrate_noise():
 
     noise_floor = float(np.median(levels))
     threshold = max(noise_floor * 3, 0.18)
-    print(f"🔧 Room noise floor: {noise_floor:.3f} → clap threshold: {threshold:.3f}")
+    print(f"[CLAP] noise floor: {noise_floor:.3f} | threshold: {threshold:.3f}")
     return threshold
 
+
 def listen_for_claps(on_double_clap):
-    print("👂 ZYRION listening for claps...")
+    print("[CLAP] listening for double clap activation")
 
     # Calibrate once at startup — room noise doesn't change enough to re-measure every loop
     threshold = _calibrate_noise()
@@ -61,12 +66,11 @@ def listen_for_claps(on_double_clap):
 
                 last_clap_time = now
                 clap_times.append(now)
-                print(f"👏 Clap! volume={volume:.3f} total={len(clap_times)}")
 
                 if len(clap_times) >= 2:
                     gap = clap_times[-1] - clap_times[-2]
                     if MIN_CLAP_GAP < gap < MAX_CLAP_GAP:
-                        print("✅ DOUBLE CLAP DETECTED!")
+                        print("[CLAP] double clap detected — activating")
                         detected["flag"] = True
                         raise sd.CallbackStop()
                     else:
@@ -79,7 +83,8 @@ def listen_for_claps(on_double_clap):
 
         on_double_clap()
 
+
 if __name__ == "__main__":
     def test():
-        print("🔥 ZYRION WAKING UP!")
+        print("[WAKE] activated")
     listen_for_claps(test)
