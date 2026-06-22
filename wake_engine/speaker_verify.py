@@ -5,14 +5,18 @@ import os
 SAMPLE_RATE = 16000
 DURATION = 2
 THRESHOLD = 0.90
-VOICE_PATH = os.path.expanduser("~/Documents/zyrion/wake_engine/akhil_voice.npy")
+VOICE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "akhil_voice.npy")
 
 def record_voice():
-    print("🎤 Speak now...")
-    audio = sd.rec(int(DURATION * SAMPLE_RATE), samplerate=SAMPLE_RATE,
-                   channels=1, dtype='float32')
-    sd.wait()
-    return audio.flatten()
+    try:
+        print("🎤 Speak now...")
+        audio = sd.rec(int(DURATION * SAMPLE_RATE), samplerate=SAMPLE_RATE,
+                       channels=1, dtype='float32')
+        sd.wait()
+        return audio.flatten()
+    except Exception as e:
+        print(f"❌ Recording error: {e}")
+        return np.zeros(0, dtype='float32')
 
 def extract_features(audio):
     """
@@ -87,6 +91,9 @@ def verify_speaker():
     saved_features = saved['features']
 
     audio = record_voice()
+    if len(audio) == 0:
+        print("❌ No audio recorded.")
+        return False
     current_features = extract_features(audio)
 
     similarity = cosine_similarity(saved_features, current_features)

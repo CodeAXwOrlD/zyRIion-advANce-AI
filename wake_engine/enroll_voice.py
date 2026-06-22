@@ -4,7 +4,7 @@ import os
 
 SAMPLE_RATE = 16000
 DURATION = 5
-SAVE_PATH = os.path.expanduser("~/Documents/zyrion/wake_engine/akhil_voice.npy")
+SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "akhil_voice.npy")
 
 def record_sample(i):
     print(f"\n🎤 Recording sample {i+1}/7 — speak for 5 seconds...")

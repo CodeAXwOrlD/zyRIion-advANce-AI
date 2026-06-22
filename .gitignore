@@ -21,3 +21,5 @@ voice/piper/piper
 .vscode/
 .idea/
 .DS_Store
+.env
+voice/piper/
