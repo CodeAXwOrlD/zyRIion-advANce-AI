@@ -12,5 +12,6 @@ else:
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 VOICE = os.environ.get("VOICE", "en-IN-NeerjaExpressiveNeural")
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "whisper-large-v3")
+WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "whisper-large-v3-turbo")
 LLM_MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
+ROUTER_MODEL = os.environ.get("ROUTER_MODEL", "llama-3.1-8b-instant")

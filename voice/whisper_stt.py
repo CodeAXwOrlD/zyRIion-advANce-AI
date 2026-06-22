@@ -18,13 +18,22 @@ DURATION = 8
 
 client = Groq(api_key=GROQ_API_KEY)
 
-def record_command():
+# Module-level cached threshold from last calibration (reused within a session)
+_cached_threshold = None
+
+def transcribe_audio(audio):
+    """Transcribe already-recorded numpy audio (used by speaker_verify challenge check)."""
+    t1 = time.time()
+    text = transcribe(audio)
+    print(f"⏱️ Whisper API: {time.time() - t1:.2f}s")
+    return text
+
+def record_command(skip_calibration=False):
+    global _cached_threshold
     print("🎤 Listening for command...")
     chunk_duration = 0.1
     chunk_samples = int(chunk_duration * SAMPLE_RATE)
-    warmup_chunks = 2          # discard stream-startup transient — don't let it skew calibration
-    calibration_chunks = 4
-    silence_needed = int(0.6 / chunk_duration)
+    silence_needed = 3           # 0.3s of silence = done (was 0.6s)
     max_chunks = int(8 / chunk_duration)
 
     recorded = []
@@ -35,25 +44,29 @@ def record_command():
         stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32')
         stream.start()
 
-        # Warm-up: still recorded (in case you start talking instantly), just excluded from calibration
-        for _ in range(warmup_chunks):
+        if skip_calibration and _cached_threshold is not None:
+            # Reuse previous threshold — skip warmup+calibration entirely
+            threshold = _cached_threshold
+            print(f"🔧 Reusing cached threshold: {threshold:.4f}")
+        else:
+            # Warmup: 1 chunk to flush hardware buffer
             chunk, _ = stream.read(chunk_samples)
             recorded.append(chunk.flatten())
 
-        # Calibrate against real steady-state noise, not the startup glitch
-        noise_samples = []
-        for _ in range(calibration_chunks):
-            chunk, _ = stream.read(chunk_samples)
-            chunk = chunk.flatten()
-            recorded.append(chunk)
-            noise_samples.append(np.sqrt(np.mean(chunk**2)))
+            # Calibrate: 2 chunks (0.2s)
+            noise_samples = []
+            for _ in range(2):
+                chunk, _ = stream.read(chunk_samples)
+                chunk = chunk.flatten()
+                recorded.append(chunk)
+                noise_samples.append(np.sqrt(np.mean(chunk**2)))
 
-        noise_floor = float(np.median(noise_samples))  # median resists one-off spikes
-        threshold = max(noise_floor * 3, 0.015)
-        print(f"🔧 Noise floor: {noise_floor:.4f} → speech threshold: {threshold:.4f}")
+            noise_floor = float(np.median(noise_samples))
+            threshold = max(noise_floor * 3, 0.015)
+            _cached_threshold = threshold
+            print(f"🔧 Noise floor: {noise_floor:.4f} → speech threshold: {threshold:.4f}")
 
-        remaining_chunks = max_chunks - warmup_chunks - calibration_chunks
-        for _ in range(remaining_chunks):
+        for _ in range(max_chunks):
             chunk, _ = stream.read(chunk_samples)
             chunk = chunk.flatten()
             recorded.append(chunk)
@@ -101,9 +114,9 @@ def transcribe(audio):
             except OSError:
                 pass
 
-def listen_and_transcribe():
+def listen_and_transcribe(skip_calibration=False):
     t0 = time.time()
-    audio = record_command()
+    audio = record_command(skip_calibration=skip_calibration)
     print(f"⏱️ Recording: {time.time() - t0:.2f}s")
 
     t1 = time.time()

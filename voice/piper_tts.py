@@ -11,27 +11,42 @@ if project_root not in sys.path:
 
 from core.config import VOICE
 
-TEMP_FILE = "/tmp/zyrion_tts.mp3"
+# Persistent event loop — avoids asyncio.run() overhead on every speak() call
+_loop = None
 
-async def generate_audio(text):
-    communicate = edge_tts.Communicate(text, VOICE)
-    await communicate.save(TEMP_FILE)
+def _get_loop():
+    global _loop
+    if _loop is None or _loop.is_closed():
+        _loop = asyncio.new_event_loop()
+    return _loop
+
+async def _speak_streaming(text):
+    """Stream TTS audio directly into mpg123 stdin — first audio byte plays
+    within ~200ms instead of waiting for the full file to be generated."""
+    process = subprocess.Popen(
+        ["mpg123", "--quiet", "-"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        communicate = edge_tts.Communicate(text, VOICE)
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio" and process.stdin:
+                process.stdin.write(chunk["data"])
+    except Exception as e:
+        print(f"❌ TTS streaming error: {e}")
+    finally:
+        if process.stdin:
+            process.stdin.close()
+        process.wait()
 
 def speak(text):
     print(f"🔊 ZYRION says: {text}")
     t0 = time.time()
-    asyncio.run(generate_audio(text))
-    print(f"⏱️ TTS generation: {time.time() - t0:.2f}s")
-    try:
-        t1 = time.time()
-        subprocess.run(["mpg123", "-q", TEMP_FILE])
-        print(f"⏱️ TTS playback: {time.time() - t1:.2f}s (this is just speech length, not lag)")
-    finally:
-        try:
-            if os.path.exists(TEMP_FILE):
-                os.remove(TEMP_FILE)
-        except OSError:
-            pass
+    loop = _get_loop()
+    loop.run_until_complete(_speak_streaming(text))
+    print(f"⏱️ TTS total (stream+play): {time.time() - t0:.2f}s")
 
 if __name__ == "__main__":
     speak("Hello Akhil! I am ZYRION, your personal AI assistant. I am online and ready to help you!")

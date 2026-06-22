@@ -22,24 +22,29 @@ def is_clap_like(chunk):
 
     return (high_energy / total_energy) > HIGH_FREQ_RATIO_MIN
 
+def _calibrate_noise():
+    """One-time ambient noise calibration at startup."""
+    calib_stream = sd.InputStream(channels=1, samplerate=SAMPLE_RATE, blocksize=CHUNK)
+    calib_stream.start()
+    levels = []
+    for _ in range(5):
+        chunk, _ = calib_stream.read(CHUNK)
+        levels.append(np.abs(chunk).max())
+    calib_stream.stop()
+    calib_stream.close()
+
+    noise_floor = float(np.median(levels))
+    threshold = max(noise_floor * 3, 0.18)
+    print(f"🔧 Room noise floor: {noise_floor:.3f} → clap threshold: {threshold:.3f}")
+    return threshold
+
 def listen_for_claps(on_double_clap):
     print("👂 ZYRION listening for claps...")
 
+    # Calibrate once at startup — room noise doesn't change enough to re-measure every loop
+    threshold = _calibrate_noise()
+
     while True:
-        # Calibrate ambient noise floor fresh each time (room conditions change)
-        calib_stream = sd.InputStream(channels=1, samplerate=SAMPLE_RATE, blocksize=CHUNK)
-        calib_stream.start()
-        levels = []
-        for _ in range(5):
-            chunk, _ = calib_stream.read(CHUNK)
-            levels.append(np.abs(chunk).max())
-        calib_stream.stop()
-        calib_stream.close()
-
-        noise_floor = float(np.median(levels))
-        threshold = max(noise_floor * 4, 0.18)
-        print(f"🔧 Room noise floor: {noise_floor:.3f} → clap threshold: {threshold:.3f}")
-
         clap_times = []
         last_clap_time = 0
         detected = {"flag": False}

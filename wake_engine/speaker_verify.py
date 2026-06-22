@@ -1,15 +1,36 @@
 import sounddevice as sd
 import numpy as np
 import os
+import random
+import sys
+
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from voice.whisper_stt import transcribe_audio
+from wake_engine.speaker_embed import extract_embedding
 
 SAMPLE_RATE = 16000
-DURATION = 2
-THRESHOLD = 0.90
+DURATION = 3
+THRESHOLD = 0.82          # neural embeddings: legit ≈ 0.85-0.95, imposters ≈ 0.3-0.6
 VOICE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "akhil_voice.npy")
+
+CHALLENGE_WORDS = [
+    "alpha", "bravo", "charlie", "delta", "echo",
+    "foxtrot", "golf", "hotel", "india", "juliet",
+    "kilo", "lima", "mango", "nova", "oscar",
+    "papa", "romeo", "sierra", "tango", "zyrion"
+]
+
+
+def generate_challenge():
+    """Pick 2 random words as the challenge phrase."""
+    return random.sample(CHALLENGE_WORDS, 2)
+
 
 def record_voice():
     try:
-        print("🎤 Speak now...")
         audio = sd.rec(int(DURATION * SAMPLE_RATE), samplerate=SAMPLE_RATE,
                        channels=1, dtype='float32')
         sd.wait()
@@ -18,93 +39,58 @@ def record_voice():
         print(f"❌ Recording error: {e}")
         return np.zeros(0, dtype='float32')
 
-def extract_features(audio):
-    """
-    Multi-feature voice fingerprint:
-    1. MFCC-like spectral features (frequency signature)
-    2. Zero Crossing Rate (how voice vibrates)
-    3. Energy envelope (volume pattern)
-    4. Spectral centroid (voice brightness/tone)
-    5. Pitch estimation (fundamental frequency)
-    """
-    features = []
-    frame_size = 512
-    hop_size = 256
-
-    zcr_list = []
-    energy_list = []
-    centroid_list = []
-    spectral_list = []
-
-    for i in range(0, len(audio) - frame_size, hop_size):
-        frame = audio[i:i+frame_size]
-
-        # 1. Zero Crossing Rate — unique per voice
-        zcr = np.mean(np.abs(np.diff(np.sign(frame)))) / 2
-        zcr_list.append(zcr)
-
-        # 2. Energy
-        energy = np.mean(frame**2)
-        energy_list.append(energy)
-
-        # 3. FFT spectrum
-        spectrum = np.abs(np.fft.rfft(frame * np.hanning(frame_size)))
-        freqs = np.fft.rfftfreq(frame_size, 1/SAMPLE_RATE)
-
-        # 4. Spectral centroid — voice tone/brightness
-        if spectrum.sum() > 0:
-            centroid = np.sum(freqs * spectrum) / spectrum.sum()
-        else:
-            centroid = 0
-        centroid_list.append(centroid)
-
-        # 5. Spectral bands — voice frequency fingerprint
-        # Split into 8 bands (like mini MFCC)
-        band_size = len(spectrum) // 8
-        bands = [np.mean(spectrum[j*band_size:(j+1)*band_size]) 
-                 for j in range(8)]
-        spectral_list.append(bands)
-
-    # Combine all features into one fingerprint vector
-    zcr_feat = np.array([np.mean(zcr_list), np.std(zcr_list)])
-    energy_feat = np.array([np.mean(energy_list), np.std(energy_list)])
-    centroid_feat = np.array([np.mean(centroid_list), np.std(centroid_list)])
-    spectral_feat = np.mean(spectral_list, axis=0)
-
-    # Normalize spectral
-    if spectral_feat.max() > 0:
-        spectral_feat = spectral_feat / spectral_feat.max()
-
-    fingerprint = np.concatenate([zcr_feat, energy_feat, 
-                                   centroid_feat, spectral_feat])
-    return fingerprint
 
 def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9)
 
-def verify_speaker():
+
+def verify_speaker(challenge_words):
+    """
+    Returns (True/False, score).
+    Checks BOTH neural voice embedding AND that the challenge words were spoken.
+    """
     if not os.path.exists(VOICE_PATH):
         print("❌ No voice enrolled! Run enroll_voice.py first.")
-        return False
+        return False, 0.0
 
     saved = np.load(VOICE_PATH, allow_pickle=True).item()
-    saved_features = saved['features']
+    saved_embedding = saved['embedding']
 
+    print("🎤 Speak now...")
     audio = record_voice()
     if len(audio) == 0:
         print("❌ No audio recorded.")
-        return False
-    current_features = extract_features(audio)
+        return False, 0.0
 
-    similarity = cosine_similarity(saved_features, current_features)
-    print(f"🔍 Voice match score: {similarity:.4f}")
+    # Check 1: neural voice embedding match
+    current_embedding = extract_embedding(audio)
+    similarity = cosine_similarity(saved_embedding, current_embedding)
+    print(f"🔍 Voice match score: {similarity:.4f} (threshold: {THRESHOLD})")
 
-    if similarity >= THRESHOLD:
-        print("✅ Welcome Akhil!")
-        return True
-    else:
-        print("❌ Access Denied!")
-        return False
+    if similarity < THRESHOLD:
+        print(f"❌ Voice mismatch — not Akhil (score {similarity:.4f} < {THRESHOLD})")
+        return False, similarity
+
+    # Check 2: did they say the challenge words?
+    print("📝 Checking challenge phrase...")
+    spoken_text = transcribe_audio(audio)
+    print(f"📢 Heard: '{spoken_text}'")
+
+    spoken_lower = spoken_text.lower()
+    words_heard = [w for w in challenge_words if w in spoken_lower]
+
+    if len(words_heard) < 2:
+        print(f"❌ Challenge failed — expected '{' '.join(challenge_words)}', heard '{spoken_text}'")
+        return False, similarity
+
+    print("✅ Voice + challenge both passed!")
+    return True, similarity
+
 
 if __name__ == "__main__":
-    verify_speaker()
+    from voice.piper_tts import speak
+    words = generate_challenge()
+    phrase = " ".join(words)
+    speak(f"Say these words: {phrase}")
+    result, score = verify_speaker(words)
+    print(f"Result: {result}, Score: {score:.4f}")

@@ -9,7 +9,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from core.config import GROQ_API_KEY, LLM_MODEL
+from core.config import GROQ_API_KEY, ROUTER_MODEL
 
 # Initialize Groq client
 client = Groq(api_key=GROQ_API_KEY)
@@ -28,12 +28,15 @@ Available agents:
 
 Most agents besides "general" are not built yet. So:
 1. Pick the single best matching agent from the list.
-2. Write a short, natural spoken reply (1-2 sentences, conversational, not robotic).
-   - If agent is "general": actually answer the question/chat normally.
-   - If agent is anything else: acknowledge the command, briefly say that part isn't wired up yet.
+2. Write "reply" — MAXIMUM 8 WORDS. No filler, no explanation.
+   - If agent is "general": answer in one very short sentence.
+   - If agent is anything else: acknowledge briefly, say it's not wired up yet.
+
+GOOD replies: "Opening YouTube.", "Done.", "Not wired up yet.", "It's 32 degrees in Jaipur."
+BAD replies: "Alright, powering off. Please give it a few moments, it'll take about 8 seconds."
 
 Respond ONLY with valid JSON, nothing else:
-{"agent": "<agent_name>", "reply": "<what to say out loud>"}
+{"agent": "<agent_name>", "reply": "<max 8 words>"}
 """
 
 def route_command(command_text, memory=None):
@@ -47,10 +50,10 @@ def route_command(command_text, memory=None):
     try:
         t0 = time.time()
         response = client.chat.completions.create(
-            model=LLM_MODEL,
+            model=ROUTER_MODEL,
             messages=messages,
-            temperature=0.4,
-            max_tokens=200
+            temperature=0.3,
+            max_tokens=60
         )
         print(f"⏱️ Groq LLM: {time.time() - t0:.2f}s")
         raw = response.choices[0].message.content.strip()
