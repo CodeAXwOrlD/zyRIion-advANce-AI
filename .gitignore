@@ -24,3 +24,7 @@ voice/piper/piper
 .env
 voice/piper/
 wake_engine/security_log.txt
+
+# Qdrant Database Data
+qdrant_data/
+
