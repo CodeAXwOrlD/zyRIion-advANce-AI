@@ -13,49 +13,41 @@ from voice.whisper_stt import listen_and_transcribe
 from voice.piper_tts import speak
 from agents.commander import route_command
 from memory.short_term import ShortTermMemory
+from memory.episodic import start_session, end_session
+from core.logger import log
 
 SESSION_TIMEOUT = 45
 MAX_VERIFY_ATTEMPTS = 3
-
 
 def verify_with_retries():
     for attempt in range(1, MAX_VERIFY_ATTEMPTS + 1):
         challenge_words = generate_challenge()
         phrase = " ".join(challenge_words)
-
-        if attempt == 1:
-            speak(f"Identify yourself. Say: {phrase}")
-        else:
-            speak(f"Try again. Say: {phrase}")
-
+        speak(f"Identify yourself. Say: {phrase}" if attempt == 1 else f"Try again. Say: {phrase}")
         passed, score = verify_speaker(challenge_words)
-
         if passed:
             record_success()
             return True
-
         record_failure(score=score, attempt=attempt)
-        print(f"[AUTH] attempt {attempt}/{MAX_VERIFY_ATTEMPTS} failed (score={score:.4f})")
-
+        log.warning(f"[AUTH] attempt {attempt}/{MAX_VERIFY_ATTEMPTS} failed (score={score:.4f})")
     return False
 
-
 def on_wake():
-    # Enforce lockout before any verification
     if is_locked_out():
         remaining = lockout_remaining()
-        print(f"[SECURITY] locked out — {remaining // 60}m {remaining % 60}s remaining, ignoring clap")
+        log.warning(f"[SECURITY] locked out — {remaining // 60}m {remaining % 60}s remaining")
         return
 
     is_akhil = verify_with_retries()
-
     if not is_akhil:
-        print(f"[AUTH] all {MAX_VERIFY_ATTEMPTS} attempts failed — staying locked")
+        log.warning(f"[AUTH] all {MAX_VERIFY_ATTEMPTS} attempts failed")
         speak("Access denied.")
         return
 
     speak("Welcome Akhil.")
     memory = ShortTermMemory()
+    session_id = start_session()
+    session_commands = []
     session_start = time.time()
     first_command = True
 
@@ -64,30 +56,29 @@ def on_wake():
         first_command = False
 
         if not command or len(command.strip()) < 2:
-            print("[LISTEN] no speech detected — still listening...")
+            log.debug("[LISTEN] no speech detected — still listening...")
             continue
 
-        print(f"\n[COMMAND] received: {command}")
+        log.info(f"[COMMAND] {command}")
         result = route_command(command, memory=memory)
-        print(f"[ROUTE] agent: {result['agent']}")
+        log.info(f"[ROUTE] agent={result['agent']} reply={result['reply']}")
         speak(result["reply"])
 
         memory.add(command, result["reply"])
+        session_commands.append(command)
         session_start = time.time()
 
+    end_session(session_id, session_commands)
     speak("Going to sleep.")
-    print("[SESSION] closed — back to clap-only listening\n")
-
+    log.info("[SESSION] closed — back to clap-only listening\n")
 
 def start_zyrion():
-    print("ZYRION online — listening for activation")
-    print("Double clap to activate\n")
+    log.info("ZYRION online — listening for activation")
+    log.info("Double clap to activate\n")
     try:
         listen_for_claps(on_wake)
     except Exception as e:
-        print(f"[ERROR] clap detection loop: {e}")
-        print("Check microphone connection and permissions.")
-
+        log.error(f"[ERROR] clap detection loop: {e}")
 
 if __name__ == "__main__":
     start_zyrion()
