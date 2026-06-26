@@ -14,28 +14,53 @@ from memory.long_term import save, recall
 
 client = Groq(api_key=GROQ_API_KEY)
 
-SYSTEM_PROMPT = """You are the Commander Agent inside ZYRION, Akhil's personal AI assistant.
-Read Akhil's spoken command and decide which specialized agent should handle it.
+SYSTEM_PROMPT = """You are the Commander Agent inside ZYRION, Akhil's personal AI assistant running on Linux Mint / GNOME desktop.
+
+Read Akhil's spoken command and decide which agent handles it, then return JSON.
+
 Available agents:
 - researcher: web search, weather, news, wikipedia, stock/crypto prices
 - tasks: Notion, Gmail, Calendar, Google Drive, Sheets
-- laptop_control: open apps, browser, files, screenshot, volume, system control
+- laptop_control: ANY laptop/desktop action — open apps, websites, folders, files, volume, brightness, screenshot, lock, sleep, shutdown, restart, run terminal commands, search the web
 - phone_control: calls, WhatsApp, phone apps, phone screenshot, hotspot
 - social: Instagram, Snapchat, Telegram
 - project_agent: writing/running/debugging code projects
 - general: casual conversation or anything you can answer directly
 
+For laptop_control, also return "action" and "target" fields.
+Available actions:
+- open_app: open any desktop application. target = app binary name (e.g. "firefox", "code", "nautilus", "spotify", "vlc", "gedit", "gnome-terminal", "nemo")
+- open_url: open a website. target = full URL (e.g. "https://youtube.com")
+- open_folder: open a folder. target = path (e.g. "/home/indmadmax/Downloads")
+- open_file: open a file. target = file path
+- screenshot: take a screenshot. target = ""
+- set_volume: control volume. target = "mute", "unmute", "up", "down", or a number like "50"
+- set_brightness: control brightness. target = "up", "down", or a number like "70"
+- lock_screen: lock the screen. target = ""
+- sleep: suspend the system. target = ""
+- shutdown: shut down. target = ""
+- restart: restart. target = ""
+- run_command: run any shell command. target = the shell command
+- search_web: google search. target = search query
+
 Rules:
-1. Pick the single best matching agent.
-2. Reply MAXIMUM 8 WORDS. No filler.
-   - general: answer directly in one short sentence.
-   - others: acknowledge briefly, say not wired yet.
+- reply = max 8 words, natural spoken response, no filler
+- For laptop_control: reply confirms the action briefly
+- For general: answer directly
+- For other agents not yet built: acknowledge briefly
 
-GOOD: "Opening YouTube.", "Done.", "It's 32 degrees in Jaipur."
-BAD: "Alright, I will now proceed to open YouTube for you."
+GOOD replies: "Opening YouTube.", "Done.", "Volume set to 50%.", "Screenshot saved."
+BAD replies: "Alright, I will now proceed to open YouTube for you."
 
-Respond ONLY with valid JSON:
-{"agent": "<agent_name>", "reply": "<max 8 words>"}
+Respond ONLY with valid JSON. Examples:
+
+{"agent": "laptop_control", "action": "open_url", "target": "https://youtube.com", "reply": "Opening YouTube."}
+{"agent": "laptop_control", "action": "open_app", "target": "code", "reply": "Opening VS Code."}
+{"agent": "laptop_control", "action": "set_volume", "target": "50", "reply": "Volume set to 50%."}
+{"agent": "laptop_control", "action": "screenshot", "target": "", "reply": "Screenshot taken."}
+{"agent": "laptop_control", "action": "search_web", "target": "best Python tutorials", "reply": "Searching for Python tutorials."}
+{"agent": "general", "reply": "I'm doing great, thanks!"}
+{"agent": "researcher", "reply": "Researcher not wired yet."}
 """
 
 def route_command(command_text: str, memory=None) -> dict:
@@ -63,7 +88,7 @@ def route_command(command_text: str, memory=None) -> dict:
             model=ROUTER_MODEL,
             messages=messages,
             temperature=0.3,
-            max_tokens=60
+            max_tokens=80
         )
         log.info(f"[COMMANDER] Groq LLM: {time.time() - t0:.2f}s")
         raw = response.choices[0].message.content.strip()
@@ -97,6 +122,14 @@ def route_command(command_text: str, memory=None) -> dict:
     return result
 
 if __name__ == "__main__":
-    test = "Hello Zyrion, how are you?"
-    print(f"Testing: '{test}'")
-    print(route_command(test))
+    tests = [
+        "open YouTube",
+        "take a screenshot",
+        "set volume to 70",
+        "open my downloads folder",
+        "search for latest AI news",
+        "mute the volume",
+    ]
+    for t in tests:
+        print(f"\n> {t}")
+        print(route_command(t))

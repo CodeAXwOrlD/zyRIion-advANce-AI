@@ -81,7 +81,7 @@ def list_all(user_id: str = DEFAULT_USER) -> list:
 
 def clear(user_id: str = DEFAULT_USER):
     try:
-        _get_memory().delete_all(filters={"user_id": user_id})
+        _get_memory().delete_all(user_id=user_id)
         print(f"[MEMORY] cleared all memories for {user_id}")
     except Exception as e:
         print(f"[MEMORY] clear failed: {e}")

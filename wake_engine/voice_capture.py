@@ -12,12 +12,30 @@ from wake_engine.security_monitor import record_failure, record_success, is_lock
 from voice.whisper_stt import listen_and_transcribe
 from voice.piper_tts import speak
 from agents.commander import route_command
+from agents.laptop_agent import execute as laptop_execute
 from memory.short_term import ShortTermMemory
 from memory.episodic import start_session, end_session
 from core.logger import log
 
 SESSION_TIMEOUT = 45
 MAX_VERIFY_ATTEMPTS = 3
+
+
+def dispatch(result: dict) -> str:
+    """Execute the action and return the final spoken reply."""
+    agent = result.get("agent", "general")
+    action = result.get("action", "")
+    target = result.get("target", "")
+    reply = result.get("reply", "Done.")
+
+    if agent == "laptop_control" and action:
+        executed_reply = laptop_execute(action, target)
+        # Use executed reply only if it's more specific than the LLM reply
+        return executed_reply if executed_reply else reply
+
+    # All other agents not yet built — just speak the reply
+    return reply
+
 
 def verify_with_retries():
     for attempt in range(1, MAX_VERIFY_ATTEMPTS + 1):
@@ -31,6 +49,7 @@ def verify_with_retries():
         record_failure(score=score, attempt=attempt)
         log.warning(f"[AUTH] attempt {attempt}/{MAX_VERIFY_ATTEMPTS} failed (score={score:.4f})")
     return False
+
 
 def on_wake():
     if is_locked_out():
@@ -61,16 +80,19 @@ def on_wake():
 
         log.info(f"[COMMAND] {command}")
         result = route_command(command, memory=memory)
-        log.info(f"[ROUTE] agent={result['agent']} reply={result['reply']}")
-        speak(result["reply"])
+        log.info(f"[ROUTE] agent={result['agent']} action={result.get('action','')} target={result.get('target','')}")
 
-        memory.add(command, result["reply"])
+        spoken_reply = dispatch(result)
+        speak(spoken_reply)
+
+        memory.add(command, spoken_reply)
         session_commands.append(command)
         session_start = time.time()
 
     end_session(session_id, session_commands)
     speak("Going to sleep.")
     log.info("[SESSION] closed — back to clap-only listening\n")
+
 
 def start_zyrion():
     log.info("ZYRION online — listening for activation")
@@ -79,6 +101,7 @@ def start_zyrion():
         listen_for_claps(on_wake)
     except Exception as e:
         log.error(f"[ERROR] clap detection loop: {e}")
+
 
 if __name__ == "__main__":
     start_zyrion()
