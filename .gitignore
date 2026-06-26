@@ -28,3 +28,14 @@ wake_engine/security_log.txt
 # Qdrant Database Data
 qdrant_data/
 
+# Databases & Logs (Test Results, Session DBs, Logs)
+logs/*.log
+logs/*.db
+memory/*.db
+*.log
+*.db
+
+# Testing Suite Scripts
+scripts/test_suite.py
+
+
